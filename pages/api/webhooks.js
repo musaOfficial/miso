@@ -1,15 +1,17 @@
 import { Webhook } from 'svix'
 import { WebhookEvent } from '@clerk/nextjs/server'
 import { NextApiRequest, NextApiResponse } from 'next'
-import { buffer } from 'micro'
- 
+import { buffer } from 'micro';
+import { connectDB } from '@/libs/mongoose/connectDB';
+import { deleteUser, createOrUpdateUser } from '@/libs/actions/user';
+
 export const config = {
   api: {
     bodyParser: false,
   }
 }
  
-export default async function handler(req, res) {
+export default async function handler(req , res) {
   if (req.method !== 'POST') {
     return res.status(405)
   }
@@ -38,7 +40,7 @@ export default async function handler(req, res) {
   // Create a new Svix instance with your secret.
   const wh = new Webhook(WEBHOOK_SECRET);
  
-  let evt
+  let evt;
  
   // Verify the payload with the headers
   try {
@@ -56,8 +58,38 @@ export default async function handler(req, res) {
   const { id } = evt.data;
   const eventType = evt.type;
  
-  console.log(`Webhook with and ID of ${id} and type of ${eventType}`)
-  console.log('Webhook body:', body)
- 
-  return res.status(200).json({ response: 'Success' })
+  if(eventType === "user.created" || eventType === "user.updated" ){
+    const { id, first_name, last_name, image_url, email_addresses, username } = evt?.data;
+
+    try {
+        await createOrUpdateUser(id, first_name, last_name, image_url, email_addresses, username);
+
+        return new Response("User is created or updated", {
+            status: 200
+        })
+    } catch (error) {
+        console.error("Error occured", error);
+        return new Response("Error occured", {
+            status: 400
+        })
+    }
+  }
+
+  if(eventType === "user.deleted"){
+    try {
+        const {id} = evt?.data;
+        await deleteUser(id);
+
+        return new Response("User is deleted", {
+            status: 200
+        })
+    } catch (error) {
+        console.error("Error deleting user", error);
+        return new Response("Error occured", {
+            status: 500
+        })
+    }
+  }
+
+  return res.status(200).json()
 }
