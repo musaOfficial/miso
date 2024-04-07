@@ -3,7 +3,6 @@ import { WebhookEvent } from '@clerk/nextjs/server'
 import { NextApiRequest, NextApiResponse } from 'next'
 import { buffer } from 'micro';
 import { connectDB } from '@/libs/mongoose/connectDB';
-import { deleteUser, createOrUpdateUser } from '@/libs/actions/user';
 
 export const config = {
   api: {
@@ -62,7 +61,27 @@ export default async function handler(req , res) {
     const { id, first_name, last_name, image_url, email_addresses, username } = evt?.data;
 
     try {
-        await createOrUpdateUser(id, first_name, last_name, image_url, email_addresses, username);
+      try {
+        await connectDB();
+
+        const user = await User.findOneAndUpdate(
+            {clerkId: id},
+            {
+                $set: {
+                    firstName: first_name,
+                    lastName: last_name,
+                    profilePhoto: image_url,
+                    email: email_addresses[0].email_address,
+                    username: username
+                }
+            },
+            { upsert: true, new: true,  }
+        )   
+
+        await user.save();
+    } catch (error) {
+        console.log(error)
+    }
 
         return new Response("User is created or updated", {
             status: 200
@@ -78,7 +97,12 @@ export default async function handler(req , res) {
   if(eventType === "user.deleted"){
     try {
         const {id} = evt?.data;
-        await deleteUser(id);
+        try {
+          await connectDB();
+          await User.findOneAndDelete({ clerkId: id });
+        } catch (error) {
+            console.log(error)
+        }
 
         return new Response("User is deleted", {
             status: 200
@@ -91,5 +115,5 @@ export default async function handler(req , res) {
     }
   }
 
-  return res.status(200).json()
+  return res.status(200).json({ response: "success" })
 }
